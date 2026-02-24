@@ -1,0 +1,197 @@
+[
+  {
+    "name": "财联社-电报(全部)",
+    "url": "https://rsshub.rssforever.com/cls/telegraph",
+    "category": "flash"
+  },
+  {
+    "name": "财联社-电报(加红)",
+    "url": "https://rsshub.rssforever.com/cls/telegraph/red",
+    "category": "flash"
+  },
+  {
+    "name": "金十数据-快讯",
+    "url": "https://rsshub.rssforever.com/jin10",
+    "category": "flash"
+  },
+  {
+    "name": "金十数据-重要",
+    "url": "https://rsshub.rssforever.com/jin10/1",
+    "category": "flash"
+  },
+  {
+    "name": "格隆汇-快讯",
+    "url": "https://rsshub.rssforever.com/gelonghui/live",
+    "category": "flash"
+  },
+  {
+    "name": "财联社-头条",
+    "url": "https://rsshub.rssforever.com/cls/depth/1000",
+    "category": "cn_deep"
+  },
+  {
+    "name": "财联社-股市",
+    "url": "https://rsshub.rssforever.com/cls/depth/1003",
+    "category": "cn_deep"
+  },
+  {
+    "name": "财联社-基金",
+    "url": "https://rsshub.rssforever.com/cls/depth/1110",
+    "category": "cn_deep"
+  },
+  {
+    "name": "财联社-热门",
+    "url": "https://rsshub.rssforever.com/cls/hot",
+    "category": "cn_deep"
+  },
+  {
+    "name": "雪球-热帖",
+    "url": "https://rsshub.isrss.com/xueqiu/hots",
+    "category": "cn_deep"
+  },
+  {
+    "name": "雪球-今日话题",
+    "url": "https://rsshub.isrss.com/xueqiu/today",
+    "category": "cn_deep"
+  },
+  {
+    "name": "格隆汇-最热",
+    "url": "https://rsshub.rssforever.com/gelonghui/hot-article",
+    "category": "cn_deep"
+  },
+  {
+    "name": "格隆汇-首页",
+    "url": "https://rsshub.rssforever.com/gelonghui/home",
+    "category": "cn_deep"
+  },
+  {
+    "name": "有知有行",
+    "url": "https://rsshub.rssforever.com/youzhiyouxing/materials",
+    "category": "cn_deep"
+  },
+  {
+    "name": "东方财富-策略",
+    "url": "https://rsshub.rssforever.com/eastmoney/report/strategyreport",
+    "category": "research"
+  },
+  {
+    "name": "东方财富-宏观",
+    "url": "https://rsshub.rssforever.com/eastmoney/report/macresearch",
+    "category": "research"
+  },
+  {
+    "name": "东方财富-晨报",
+    "url": "https://rsshub.rssforever.com/eastmoney/report/brokerreport",
+    "category": "research"
+  },
+  {
+    "name": "东方财富-行业",
+    "url": "https://rsshub.rssforever.com/eastmoney/report/industry",
+    "category": "research"
+  },
+  {
+    "name": "格隆汇-研报",
+    "url": "https://rsshub.isrss.com/gelonghui/home/research",
+    "category": "research"
+  },
+  {
+    "name": "财联社-港股",
+    "url": "https://rsshub.rssforever.com/cls/depth/1135",
+    "category": "hk"
+  },
+  {
+    "name": "格隆汇-股票",
+    "url": "https://rsshub.rssforever.com/gelonghui/home/stock",
+    "category": "hk"
+  },
+  {
+    "name": "Bloomberg News",
+    "url": "https://rsshub.rssforever.com/bloomberg",
+    "category": "intl"
+  },
+  {
+    "name": "Bloomberg Markets",
+    "url": "https://rsshub.rssforever.com/bloomberg/markets",
+    "category": "intl"
+  },
+  {
+    "name": "Bloomberg Tech",
+    "url": "https://rsshub.rssforever.com/bloomberg/technology",
+    "category": "intl"
+  },
+  {
+    "name": "WSJ Markets",
+    "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+    "category": "intl"
+  },
+  {
+    "name": "WSJ World",
+    "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml",
+    "category": "intl"
+  },
+  {
+    "name": "CNBC Top",
+    "url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",
+    "category": "intl"
+  },
+  {
+    "name": "CNBC World",
+    "url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100727362",
+    "category": "intl"
+  },
+  {
+    "name": "MarketWatch",
+    "url": "https://feeds.marketwatch.com/marketwatch/topstories/",
+    "category": "intl"
+  },
+  {
+    "name": "Seeking Alpha",
+    "url": "https://seekingalpha.com/market_currents.xml",
+    "category": "intl"
+  },
+  {
+    "name": "财联社-环球",
+    "url": "https://rsshub.rssforever.com/cls/depth/1007",
+    "category": "intl"
+  },
+  {
+    "name": "华尔街见闻-全球",
+    "url": "https://rsshub.rssforever.com/wallstreetcn/news/global",
+    "category": "intl"
+  },
+  {
+    "name": "金十数据-闪讯",
+    "url": "https://rsshub.rssforever.com/jin10/flash",
+    "category": "macro"
+  },
+  {
+    "name": "财联社-金融",
+    "url": "https://rsshub.rssforever.com/cls/depth/1032",
+    "category": "macro"
+  },
+  {
+    "name": "财联社-期货",
+    "url": "https://rsshub.rssforever.com/cls/depth/1124",
+    "category": "macro"
+  },
+  {
+    "name": "Reuters Business",
+    "url": "https://www.reutersagency.com/feed/",
+    "category": "intl"
+  },
+  {
+    "name": "FT",
+    "url": "https://www.ft.com/rss/home",
+    "category": "intl"
+  },
+  {
+    "name": "豆瓣-投资理财",
+    "url": "https://rsshub.isrss.com/douban/group/648435",
+    "category": "cn_deep"
+  },
+  {
+    "name": "豆瓣-FIRE生活",
+    "url": "https://rsshub.isrss.com/douban/group/690523",
+    "category": "cn_deep"
+  }
+]
