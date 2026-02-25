@@ -30,3 +30,17 @@
 - 检查 `knowledge/` 目录是否需要整理
 - 检查 MEMORY.md 是否需要更新
 - 无事则 HEARTBEAT_OK
+
+## 每日成本追踪（非交易时段执行，每天一次）
+
+每天 21:00 左右执行一次:
+1. 统计今日 session 数量: `ls /Users/study/.openclaw/agents/trading/sessions/*.jsonl | grep $(date +%Y-%m-%d) | wc -l`
+2. 估算 token 消耗（基于 session 数量 × 平均 context）
+3. 追加到 memory/YYYY-MM-DD.md:
+   ```
+   ## 📊 今日成本估算
+   - Sessions: X 个
+   - 估计 token: ~XX万 (基于平均每 session ~5k tokens)
+   - Cron 任务: Y 次触发
+   ```
+4. 如果 sessions > 50（异常高）: 推送一条提醒

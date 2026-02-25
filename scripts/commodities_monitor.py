@@ -8,6 +8,9 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.report_templates import get_template
+
 DATA_DIR = Path("/tmp/commodities_data")
 DATA_DIR.mkdir(exist_ok=True)
 HISTORY_FILE = DATA_DIR / "yf_history.json"
@@ -73,7 +76,29 @@ def main():
         print("\n⚠️ 异动警报 (超过阈值):")
         for a in alerts:
             print("  " + a)
-        return "\n".join(["🔔 市场异动警报 | " + now.strftime("%H:%M"), ""] + alerts)
+
+        tpl = get_template("anomaly")
+        title = tpl["title"].format(time=now.strftime("%H:%M"))
+        s = tpl["sections"]
+        msg_lines = [
+            title,
+            "",
+            s[0],
+            "- 风险偏好：隔夜波动抬升，优先防守+确认后跟随。",
+            "",
+            s[1],
+            *[f"- {x}" for x in alerts],
+            "",
+            s[2],
+            "- 驱动：商品/美股关键标的达到预设阈值触发。",
+            "",
+            s[3],
+            "- 影响：若异动延续，A股资源与成长板块开盘分化概率上升。",
+            "",
+            s[4],
+            "- 建议：不追高，等开盘30分钟量能确认后再加仓。",
+        ]
+        return "\n".join(msg_lines)
     else:
         print("\n✅ 所有品种波动在阈值内")
         return "HEARTBEAT_OK"

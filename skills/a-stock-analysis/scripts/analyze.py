@@ -20,9 +20,11 @@ import argparse
 import json
 import re
 import sys
+import time
 import urllib.request
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse
 
 
 def get_sina_symbol(code: str) -> str:
@@ -40,6 +42,100 @@ def get_sina_symbol(code: str) -> str:
         return "bj" + code
     else:
         return "sh" + code
+
+
+def _warn_fetch_error(url: str, error: Exception, attempt: int, retries: int):
+    host = urlparse(url).hostname or "unknown-host"
+    print(
+        f"[warn] fetch failed ({attempt}/{retries}) host={host} "
+        f"error={error.__class__.__name__}: {error}",
+        file=sys.stderr,
+    )
+
+
+def _fetch_text_with_retry(
+    url: str,
+    headers: Optional[dict] = None,
+    timeout: int = 8,
+    retries: int = 3,
+    decode: str = "utf-8",
+) -> Optional[str]:
+    """HTTP GET with retry + timeout. Returns decoded body or None."""
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(url, headers=headers or {})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read()
+            if not raw:
+                raise ValueError("empty response body")
+            return raw.decode(decode, errors="ignore")
+        except Exception as e:
+            _warn_fetch_error(url, e, attempt, retries)
+            if attempt < retries:
+                time.sleep(0.3 * attempt)
+    return None
+
+
+def fetch_realtime_eastmoney(symbols: list[str]) -> dict[str, dict]:
+    """Eastmoney primary path (batch clist/get)."""
+    if not symbols:
+        return {}
+
+    wanted_codes = {s[2:] for s in symbols}
+    # 覆盖沪深北A股，随后按股票代码过滤
+    url = (
+        "https://79.push2.eastmoney.com/api/qt/clist/get"
+        "?pn=1&pz=6000&po=1&np=1&fltt=2&invt=2&fid=f3"
+        "&fs=m:1+t:2,m:1+t:23,m:0+t:6,m:0+t:80"
+        "&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18"
+    )
+    text = _fetch_text_with_retry(
+        url,
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=6,
+        retries=3,
+        decode="utf-8",
+    )
+    if not text:
+        return {}
+
+    try:
+        payload = json.loads(text)
+        diff = ((payload.get("data") or {}).get("diff")) or []
+    except Exception as e:
+        _warn_fetch_error(url, e, 1, 1)
+        return {}
+
+    result = {}
+    for item in diff:
+        code = str(item.get("f12") or "")
+        if code not in wanted_codes:
+            continue
+
+        price = float(item.get("f2") or 0)
+        if price <= 0:
+            continue
+        pre_close = float(item.get("f18") or 0)
+        change_pct = float(item.get("f3") or 0)
+        change_amt = float(item.get("f4") or 0)
+
+        market_prefix = "sh" if code.startswith("6") else "sz"
+        result[market_prefix + code] = {
+            "code": code,
+            "name": str(item.get("f14") or ""),
+            "price": price,
+            "open": float(item.get("f17") or 0),
+            "pre_close": pre_close if pre_close > 0 else None,
+            "high": float(item.get("f15") or 0),
+            "low": float(item.get("f16") or 0),
+            "volume": int(float(item.get("f5") or 0)),  # 手
+            "amount": float(item.get("f6") or 0),  # 元
+            "change_amt": round(change_amt, 2),
+            "change_pct": round(change_pct, 2),
+            "turnover": None,
+            "source": "eastmoney",
+        }
+    return result
 
 
 def fetch_realtime_sina(symbols: list[str]) -> dict[str, dict]:
@@ -65,14 +161,19 @@ def fetch_realtime_sina(symbols: list[str]) -> dict[str, dict]:
     try:
         codes_str = ",".join(symbols)
         url = f"https://hq.sinajs.cn/list={codes_str}"
-        
-        req = urllib.request.Request(url, headers={
-            "Referer": "https://finance.sina.com.cn",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        })
-        resp = urllib.request.urlopen(req, timeout=10)
-        text = resp.read().decode("gbk")
-        
+        text = _fetch_text_with_retry(
+            url,
+            headers={
+                "Referer": "https://finance.sina.com.cn",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            timeout=8,
+            retries=3,
+            decode="gbk",
+        )
+        if not text:
+            return {}
+
         # 解析每行
         for line in text.strip().split("\n"):
             line = line.strip()
@@ -124,6 +225,7 @@ def fetch_realtime_sina(symbols: list[str]) -> dict[str, dict]:
                 "change_amt": round(change_amt, 2),
                 "change_pct": round(change_pct, 2),
                 "turnover": None,  # 新浪实时接口不提供换手率
+                "source": "sina",
             }
             
     except Exception as e:
@@ -145,12 +247,18 @@ def fetch_minute_data_sina(symbol: str, count: int = 250) -> list[dict]:
     url = f"https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_{symbol}=/CN_MarketDataService.getKLineData?symbol={symbol}&scale=1&ma=no&datalen={count}"
     
     try:
-        req = urllib.request.Request(url, headers={
-            "Referer": "https://finance.sina.com.cn",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        })
-        resp = urllib.request.urlopen(req, timeout=10)
-        text = resp.read().decode("utf-8")
+        text = _fetch_text_with_retry(
+            url,
+            headers={
+                "Referer": "https://finance.sina.com.cn",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+            timeout=8,
+            retries=3,
+            decode="utf-8",
+        )
+        if not text:
+            return []
         
         # 解析JSONP: var _xxx=([...])
         match = re.search(r"\(\[(.*)\]\)", text, re.DOTALL)
@@ -175,6 +283,93 @@ def fetch_minute_data_sina(symbol: str, count: int = 250) -> list[dict]:
         print(f"新浪分时接口错误: {e}", file=sys.stderr)
     
     return []
+
+
+def fetch_realtime_tencent(symbols: list[str]) -> dict[str, dict]:
+    """Tencent fallback path for missing symbols."""
+    if not symbols:
+        return {}
+
+    url = f"https://qt.gtimg.cn/q={','.join(symbols)}"
+    text = _fetch_text_with_retry(
+        url,
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=8,
+        retries=2,
+        decode="gbk",
+    )
+    if not text:
+        return {}
+
+    result = {}
+    for line in text.strip().split(";"):
+        line = line.strip()
+        if not line:
+            continue
+        m = re.match(r'v_(\w+)="([^"]*)"', line)
+        if not m:
+            continue
+        symbol = m.group(1)
+        fields = m.group(2).split("~")
+        if len(fields) < 35:
+            continue
+        try:
+            name = fields[1]
+            code = fields[2]
+            price = float(fields[3]) if fields[3] else 0
+            pre_close = float(fields[4]) if fields[4] else 0
+            open_price = float(fields[5]) if fields[5] else 0
+            high = float(fields[33]) if fields[33] else 0
+            low = float(fields[34]) if fields[34] else 0
+            volume = int(float(fields[36])) if len(fields) > 36 and fields[36] else 0
+            amount = float(fields[37]) if len(fields) > 37 and fields[37] else 0
+        except (ValueError, IndexError):
+            continue
+        if price <= 0:
+            continue
+        change_amt = price - pre_close if pre_close > 0 else 0
+        change_pct = (change_amt / pre_close * 100) if pre_close > 0 else 0
+        result[symbol] = {
+            "code": code,
+            "name": name,
+            "price": price,
+            "open": open_price if open_price > 0 else None,
+            "pre_close": pre_close if pre_close > 0 else None,
+            "high": high if high > 0 else None,
+            "low": low if low > 0 else None,
+            "volume": volume,
+            "amount": amount,
+            "change_amt": round(change_amt, 2),
+            "change_pct": round(change_pct, 2),
+            "turnover": None,
+            "source": "tencent",
+        }
+    return result
+
+
+def fetch_realtime_with_fallback(symbols: list[str]) -> dict[str, dict]:
+    """
+    Resilient realtime fetch:
+    1) Eastmoney clist/get (primary)
+    2) Sina batch fallback
+    3) Tencent fallback for still-missing symbols
+    """
+    result = fetch_realtime_eastmoney(symbols)
+    missing = [s for s in symbols if s not in result]
+    if missing:
+        print(
+            f"[warn] eastmoney partial/failed, fallback=sina symbols={len(missing)}",
+            file=sys.stderr,
+        )
+        result.update(fetch_realtime_sina(missing))
+    missing = [s for s in symbols if s not in result]
+    if missing:
+        print(
+            f"[warn] sina partial/failed, fallback=tencent symbols={len(missing)}",
+            file=sys.stderr,
+        )
+        result.update(fetch_realtime_tencent(missing))
+    return result
 
 
 def analyze_minute_volume(minute_data: list[dict]) -> dict:
@@ -276,6 +471,7 @@ def format_realtime(data: dict) -> str:
         f"  今开: {data['open']:.2f}  最高: {data['high']:.2f}  最低: {data['low']:.2f}",
         f"  昨收: {data['pre_close']:.2f}  {turnover_str}",
         f"  成交量: {data['volume']/10000:.1f}万手  成交额: {data['amount']/100000000:.2f}亿",
+        f"  数据源: {data.get('source', 'unknown')}",
     ]
     return "\n".join(lines)
 
@@ -319,7 +515,7 @@ def analyze_stock(code: str, with_minute: bool = False, realtime_cache: dict = N
     if realtime_cache and sina_symbol in realtime_cache:
         realtime = realtime_cache[sina_symbol]
     else:
-        realtime_data = fetch_realtime_sina([sina_symbol])
+        realtime_data = fetch_realtime_with_fallback([sina_symbol])
         realtime = realtime_data.get(sina_symbol)
     
     if not realtime:
@@ -351,15 +547,22 @@ def main():
     
     # 批量获取实时行情
     sina_symbols = [get_sina_symbol(code) for code in args.codes]
-    realtime_cache = fetch_realtime_sina(sina_symbols)
+    realtime_cache = fetch_realtime_with_fallback(sina_symbols)
     
     results = []
     for code in args.codes:
         result = analyze_stock(code, with_minute=args.minute, realtime_cache=realtime_cache)
         results.append(result)
     
+    source_hits = {}
+    for r in results:
+        src = ((r.get("realtime") or {}).get("source")) if isinstance(r, dict) else None
+        if src:
+            source_hits[src] = source_hits.get(src, 0) + 1
+
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2))
+        print(json.dumps({"source_hits": source_hits}, ensure_ascii=False), file=sys.stderr)
     else:
         for result in results:
             if "error" in result:

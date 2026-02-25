@@ -21,56 +21,109 @@ Usage:
 import argparse
 import json
 import sys
+import time
 from datetime import datetime, timedelta
+
+FETCH_STATS = {
+    "eastmoney_ok": 0,
+    "eastmoney_fail": 0,
+    "fallback_ok": 0,
+    "fallback_fail": 0,
+}
+
+
+def _normalize_kline_df(df):
+    """标准化不同源字段命名"""
+    import pandas as pd
+
+    df = df.rename(columns={
+        "日期": "date", "开盘": "open", "收盘": "close",
+        "最高": "high", "最低": "low", "成交量": "volume",
+        "成交额": "amount", "振幅": "amplitude",
+        "涨跌幅": "pct_change", "涨跌额": "change",
+        "换手率": "turnover",
+        "date": "date", "open": "open", "close": "close",
+        "high": "high", "low": "low", "volume": "volume",
+        "amount": "amount", "turnover": "turnover",
+    })
+
+    for col in ["open", "close", "high", "low", "volume", "amount", "turnover"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    return df
 
 
 def fetch_kline_data(stock_code, period="daily", count=120):
-    """获取 K 线数据"""
+    """获取 K 线数据（东财失败时自动降级）"""
     try:
         import akshare as ak
-        import pandas as pd
 
         if period == "daily":
-            df = ak.stock_zh_a_hist(
-                symbol=stock_code,
-                period="daily",
-                start_date=(datetime.now() - timedelta(days=count * 2)).strftime("%Y%m%d"),
-                end_date=datetime.now().strftime("%Y%m%d"),
-                adjust="qfq"
-            )
+            start_date = (datetime.now() - timedelta(days=count * 2)).strftime("%Y%m%d")
+            end_date = datetime.now().strftime("%Y%m%d")
+            hist_period = "daily"
         elif period == "weekly":
-            df = ak.stock_zh_a_hist(
-                symbol=stock_code,
-                period="weekly",
-                start_date=(datetime.now() - timedelta(days=count * 10)).strftime("%Y%m%d"),
-                end_date=datetime.now().strftime("%Y%m%d"),
-                adjust="qfq"
-            )
+            start_date = (datetime.now() - timedelta(days=count * 10)).strftime("%Y%m%d")
+            end_date = datetime.now().strftime("%Y%m%d")
+            hist_period = "weekly"
         else:
-            df = ak.stock_zh_a_hist(
-                symbol=stock_code,
-                period="daily",
-                start_date=(datetime.now() - timedelta(days=count * 2)).strftime("%Y%m%d"),
-                end_date=datetime.now().strftime("%Y%m%d"),
-                adjust="qfq"
-            )
+            start_date = (datetime.now() - timedelta(days=count * 2)).strftime("%Y%m%d")
+            end_date = datetime.now().strftime("%Y%m%d")
+            hist_period = "daily"
 
-        df = df.rename(columns={
-            "日期": "date", "开盘": "open", "收盘": "close",
-            "最高": "high", "最低": "low", "成交量": "volume",
-            "成交额": "amount", "振幅": "amplitude",
-            "涨跌幅": "pct_change", "涨跌额": "change",
-            "换手率": "turnover"
-        })
+        last_err = None
+        for i in range(1, 4):
+            try:
+                df = ak.stock_zh_a_hist(
+                    symbol=stock_code,
+                    period=hist_period,
+                    start_date=start_date,
+                    end_date=end_date,
+                    adjust="qfq"
+                )
+                if df is not None and not df.empty:
+                    FETCH_STATS["eastmoney_ok"] += 1
+                    return _normalize_kline_df(df).tail(count), "eastmoney"
+                raise ValueError("empty dataframe")
+            except Exception as e:
+                last_err = e
+                FETCH_STATS["eastmoney_fail"] += 1
+                print(
+                    f"[warn] 东财K线失败({stock_code}) attempt={i}/3 error={e.__class__.__name__}: {e}",
+                    file=sys.stderr,
+                )
+                if i < 3:
+                    time.sleep(0.4 * i)
 
-        for col in ["open", "close", "high", "low", "volume", "amount"]:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
+        # fallback: 尝试新浪日线（周线请求降级为日线）
+        if hasattr(ak, "stock_zh_a_daily"):
+            try:
+                df_fb = ak.stock_zh_a_daily(symbol=stock_code, adjust="qfq")
+                if df_fb is not None and not df_fb.empty:
+                    FETCH_STATS["fallback_ok"] += 1
+                    # 某些版本 date 在索引上
+                    if "date" not in df_fb.columns and str(getattr(df_fb.index, "name", "")).lower() in {"date", "日期"}:
+                        df_fb = df_fb.reset_index()
+                    # 先标准化列名，再按起始日期过滤
+                    df_fb = _normalize_kline_df(df_fb)
+                    if "date" in df_fb.columns:
+                        date_cut = datetime.strptime(start_date, "%Y%m%d").strftime("%Y-%m-%d")
+                        df_fb = df_fb[df_fb["date"].astype(str) >= date_cut]
+                    return df_fb.tail(count), "sina_fallback"
+                raise ValueError("fallback empty dataframe")
+            except Exception as fb_err:
+                FETCH_STATS["fallback_fail"] += 1
+                print(
+                    f"[warn] 降级源失败({stock_code}) error={fb_err.__class__.__name__}: {fb_err}",
+                    file=sys.stderr,
+                )
 
-        return df.tail(count)
+        print(f"K线数据获取失败({stock_code}): {last_err}", file=sys.stderr)
+        return None, "failed"
     except Exception as e:
         print(f"K线数据获取失败({stock_code}): {e}", file=sys.stderr)
-        return None
+        return None, "failed"
 
 
 def calculate_indicators(df):
@@ -241,7 +294,7 @@ def get_trend_description(df):
 def analyze_stock(stock_code, period="daily"):
     """完整的单只股票技术分析"""
     print(f"\n分析 {stock_code}...", file=sys.stderr)
-    df = fetch_kline_data(stock_code, period)
+    df, data_source = fetch_kline_data(stock_code, period)
     if df is None or df.empty:
         return None
 
@@ -252,6 +305,7 @@ def analyze_stock(stock_code, period="daily"):
     latest = df.iloc[-1]
     result = {
         "stock": stock_code,
+        "data_source": data_source,
         "date": str(latest.get("date", "")),
         "close": float(latest.get("close", 0)),
         "volume": int(latest.get("volume", 0)),
@@ -288,8 +342,20 @@ def main():
         if result:
             results.append(result)
 
+    source_hits = {}
+    for r in results:
+        src = r.get("data_source", "unknown")
+        source_hits[src] = source_hits.get(src, 0) + 1
+
     if args.json:
         print(json.dumps(results, ensure_ascii=False, indent=2))
+        print(
+            json.dumps({
+                "source_hits": source_hits,
+                "fetch_stats": FETCH_STATS,
+            }, ensure_ascii=False),
+            file=sys.stderr,
+        )
     else:
         for r in results:
             sig = r["signal"]
@@ -301,6 +367,7 @@ def main():
 
             print(f"\n{'='*50}")
             print(f"📊 {r['stock']} | {r['date']} | ¥{r['close']}")
+            print(f"🧭 数据源: {r.get('data_source', 'unknown')}")
             print(f"📈 趋势: {r['trend']}")
             print(f"{signal_emoji} 信号: **{sig['action']}** (买{sig['buy_score']}/卖{sig['sell_score']})")
 
@@ -318,6 +385,9 @@ def main():
                 print(f"  • RSI(14): {ind['RSI']}")
                 print(f"  • MACD: {ind['MACD']} Signal: {ind['MACD_Signal']} Hist: {ind['MACD_Hist']}")
                 print(f"  • 布林带: 上轨={ind['BB_Upper']} 下轨={ind['BB_Lower']}")
+
+        print(f"\n📌 数据源命中统计: {source_hits}")
+        print(f"📌 抓取统计: {FETCH_STATS}", file=sys.stderr)
 
 
 if __name__ == "__main__":
