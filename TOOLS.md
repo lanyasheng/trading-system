@@ -92,3 +92,8 @@ AKShare 主要支持 A 股数据，但也支持部分国际市场：
 - 但覆盖度不如专业的国际数据源
 
 对于国际贵金属/原油/地缘政治等信息，**优先使用 rss-financial 的 intl 分类**（Bloomberg/WSJ/CNBC），这些源的覆盖最全面。
+
+## US 市场数据 Demo
+- 新增 `us_data` 包，提供美股批量快照（`yfinance` 主源，`akshare` 兜底）。
+- 运行示例:
+  - `python3 scripts/demo_us_data_manager.py`

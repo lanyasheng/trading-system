@@ -1,0 +1,28 @@
+# Sensitive/local runtime
+.openclaw/
+memory/
+knowledge/
+reports/
+
+# Local secrets/config
+*.env
+.env*
+openclaw.json
+**/openclaw.json
+secrets*
+*token*
+*apikey*
+*api_key*
+
+# Caches/databases/logs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# OS
+.DS_Store
