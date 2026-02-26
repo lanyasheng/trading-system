@@ -17,12 +17,14 @@ from stock_data.utils import normalize_code
 
 WATCHLIST = [
     "002202", "601857", "601899", "000426",
-    "515790", "020274", "515210", "518880", "159840",
+    "515790", "159870", "515210", "518880", "159840",
     # 主流趋势观测ETF（非优先评分）
     "510300", "510500", "159915", "588000", "512400", "512660", "512880", "561560",
+    # 研究标的（仅价格摘要，不参与评分）
+    "600519", "000858", "002594",
 ]
 PRIORITY = [
-    "002202", "020274", "515210", "515790", "601857", "601899", "518880", "159840",
+    "002202", "159870", "515210", "515790", "601857", "601899", "518880", "159840",
     "510300", "510500", "159915", "588000", "512400", "512660", "512880", "561560",
 ]
 HISTORY_DAYS = 540
@@ -38,7 +40,7 @@ NAME_MAP = {
     "601857": "中国石油",
     "159840": "锂电池ETF",
     "515790": "光伏ETF",
-    "020274": "细分化工产业指数",
+    "159870": "化工ETF",
     "515210": "钢铁ETF",
     "518880": "黄金ETF",
     "510300": "沪深300ETF",
@@ -859,8 +861,8 @@ def render_with_limit(
     limit: int = 1600,
 ) -> str:
     """Trim lower-priority lines first to keep output readable within limit."""
-    keep_price = min(len(price_lines), 12)
-    keep_movers = min(len(mover_lines), 6)
+    keep_price = len(price_lines)  # 显示全部价格
+    keep_movers = min(len(mover_lines), 8)
     keep_source = True
 
     def _pack() -> str:
@@ -902,15 +904,17 @@ def render_with_limit(
 
 
 def fetch_batch_realtime_snapshot(codes: list[str]) -> dict[str, dict[str, float]]:
-    """Batch fetch realtime quotes with Sina HQ API (header-enabled).
+    """Batch fetch realtime quotes with Sina HQ API, fallback to pytdx for missing.
 
     Returns: {code: {"close": float, "pct": float}}
     """
     out: dict[str, dict[str, float]] = {}
+    missing = set(str(c).zfill(6) for c in codes)
+
+    # Step 1: Try Sina batch
     try:
         import requests  # type: ignore
 
-        # Sina codes: sh600000 / sz000001
         symbols = []
         for c in codes:
             c = str(c).zfill(6)
@@ -923,35 +927,61 @@ def fetch_batch_realtime_snapshot(codes: list[str]) -> dict[str, dict[str, float
             "User-Agent": "Mozilla/5.0",
         }
         resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code != 200 or not resp.text:
-            return out
-
-        # line example:
-        # var hq_str_sz002202="金风科技,26.200,26.080,27.250,...,2026-02-25,13:43:21,00";
-        for line in resp.text.splitlines():
-            if "hq_str_" not in line or "=\"" not in line:
-                continue
-            try:
-                left, right = line.split('="', 1)
-                payload = right.rsplit('"', 1)[0]
-                symbol = left.split("hq_str_")[-1].strip()
-                code = symbol[-6:]
-                parts = payload.split(",")
-                # sina: [name, open, prev_close, close, high, low, ...]
-                if len(parts) < 4:
+        if resp.status_code == 200 and resp.text:
+            for line in resp.text.splitlines():
+                if "hq_str_" not in line or "=\"" not in line:
                     continue
-                prev_close = pd.to_numeric(parts[2], errors="coerce")
-                close = pd.to_numeric(parts[3], errors="coerce")
-                if pd.isna(close):
+                try:
+                    left, right = line.split('="', 1)
+                    payload = right.rsplit('"', 1)[0]
+                    symbol = left.split("hq_str_")[-1].strip()
+                    code = symbol[-6:]
+                    parts = payload.split(",")
+                    if len(parts) < 4:
+                        continue
+                    prev_close = pd.to_numeric(parts[2], errors="coerce")
+                    close = pd.to_numeric(parts[3], errors="coerce")
+                    if pd.isna(close):
+                        continue
+                    pct = math.nan
+                    if pd.notna(prev_close) and float(prev_close) != 0:
+                        pct = (float(close) / float(prev_close) - 1.0) * 100.0
+                    out[code] = {"close": float(close), "pct": float(pct) if pd.notna(pct) else math.nan}
+                    missing.discard(code)
+                except Exception:
                     continue
-                pct = math.nan
-                if pd.notna(prev_close) and float(prev_close) != 0:
-                    pct = (float(close) / float(prev_close) - 1.0) * 100.0
-                out[code] = {"close": float(close), "pct": float(pct) if pd.notna(pct) else math.nan}
-            except Exception:
-                continue
     except Exception:
-        return out
+        pass
+
+    # Step 2: Fallback to pytdx for missing codes
+    if missing:
+        try:
+            from pytdx.hq import TdxHq_API
+            api = TdxHq_API()
+            server = ("119.147.212.81", 7709)
+            if api.connect(*server):
+                try:
+                    # Build stock list: [(market, code), ...]
+                    stock_list = []
+                    for c in missing:
+                        market = 1 if c.startswith(("6", "9")) else 0
+                        stock_list.append((market, c))
+                    quotes = api.get_security_quotes(stock_list)
+                    if quotes:
+                        for q in quotes:
+                            code = str(q.get("code", "")).zfill(6)
+                            close = pd.to_numeric(q.get("price"), errors="coerce")
+                            prev_close = pd.to_numeric(q.get("last_close"), errors="coerce")
+                            if pd.notna(close):
+                                pct = math.nan
+                                if pd.notna(prev_close) and float(prev_close) != 0:
+                                    pct = (float(close) / float(prev_close) - 1.0) * 100.0
+                                out[code] = {"close": float(close), "pct": float(pct) if pd.notna(pct) else math.nan}
+                finally:
+                    api.disconnect()
+        except Exception:
+            pass
+
     return out
 
 
@@ -1158,19 +1188,45 @@ def build() -> str:
     latest_ts = date.today().strftime("%Y-%m-%d") + " " + __import__('datetime').datetime.now().strftime("%H:%M:%S")
     src_line = f"{src_line} | 实时到:{latest_ts}"
 
-    return render_with_limit(
-        end_s=end_s,
-        price_lines=price_lines,
-        mover_lines=mover_lines,
-        score_lines=score_lines,
-        src_line=src_line,
-        limit=1800,
-    )
+    # 返回结构化数据供拆分输出
+    return {
+        "end_s": end_s,
+        "price_lines": price_lines,
+        "mover_lines": mover_lines,
+        "score_lines": score_lines,
+        "src_line": src_line,
+    }
+
+
+def render_part1(data: dict) -> str:
+    """第一部分：价格摘要 + 异动"""
+    lines = [
+        f"📊 MonitorV2 {data['end_s']}",
+        "价格摘要",
+        *data['price_lines'],
+        "异动(|pct|>=1%)",
+        *data['mover_lines'][:6],
+    ]
+    return "\n".join(lines)
+
+
+def render_part2(data: dict) -> str:
+    """第二部分：评分 + 数据源"""
+    lines = [
+        "优先标的评分(技术+资金+SF+FV+风险+事件)",
+        *data['score_lines'],
+        f"源链路 {data['src_line']}",
+    ]
+    return "\n".join(lines)
 
 
 def main() -> None:
     try:
-        print(build())
+        data = build()
+        print("===PART1===")
+        print(render_part1(data))
+        print("===PART2===")
+        print(render_part2(data))
     except Exception as exc:
         print(f"📊 MonitorV2\n系统异常，已降级: {exc}")
 

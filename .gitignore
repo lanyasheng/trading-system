@@ -27,3 +27,8 @@ __pycache__/
 # OS
 .DS_Store
 .pi/
+.DS_Store
+cache/
+.openclaw/
+*.pyc
+__pycache__/

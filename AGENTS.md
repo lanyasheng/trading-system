@@ -2,7 +2,7 @@
 
 ## Every Session
 
-1. Read `SOUL.md` — 你的身份和性格
+1. Read `SOUL.md` — 你的身份、规则和量化工具箱
 2. Read `USER.md` — 你服务的用户
 3. Read `shared-context/priorities.md` — 团队当前优先事项
 4. Read `memory/YYYY-MM-DD.md` (today + yesterday)
@@ -28,10 +28,22 @@
 
 - **报告模板** → `PLAYBOOK.md`（权威源）
 - **自选股列表** → `knowledge/watchlist.json`（权威源）
+- **量化工具** → `SOUL.md` → "量化工具箱" 区块（权威源）
+
+## 工具
+
+所有数据获取通过 exec 调用 quant.py CLI wrapper:
+
+```
+/Users/study/.openclaw/workspace-trading/mcp-server/.venv/bin/python3 \
+  /Users/study/.openclaw/workspace-trading/skills/trading-quant/scripts/quant.py <tool> [args]
+```
+
+详见 `SOUL.md` 完整工具清单和路由决策。
 
 ## 共享上下文（团队协作）
 
-- 读取 `shared-context/agent-outputs/ainews/` — AI哨兵的技术趋势（可能有投资机会）
+- 读取 `shared-context/agent-outputs/ainews/` — AI哨兵的技术趋势
 - 你的分析产出写入 `shared-context/agent-outputs/trading/`
 - 重要市场事件写入共享，供其他 Agent 参考
 
@@ -44,23 +56,13 @@
 | 宏观数据 | `knowledge/macro.md` | 重要数据 |
 | 自选股 | `knowledge/watchlist.json` | 变动时 |
 
-## TradingScore
+## Agent 输出规范（全局强制）
 
-RSI<30/RSI>70: +2 | MACD金叉/死叉: +3 | 均线多/空: +2 | 布林触轨: +2 | 60日线: +1
-总分>=5 强信号 / >=3 一般信号
+⚠️ **绝对禁止**：将思考过程、分析步骤、内部推理输出给用户。
 
-## 工具
-
-| 工具 | 调用 |
-|-----|------|
-| A股行情 | `uv run skills/a-stock-analysis/scripts/analyze.py` |
-| 金融新闻 | `rss_financial.py` / `fetch_financial_news.py` |
-| 综合监控 | `python3 scripts/monitor_v2.py` |
-| 免费搜索 | `mcporter call open-websearch.search` |
-
-## 输出规范
-- Discord: emoji+列表，不用表格，<=2000字
-- 链接: `<URL>` 抑制预览; 风险: ⚠️ 标注
+**正确做法**：直接给出结论和行动建议。
+- ❌ "让我分析一下..." / "我需要检查..."
+- ✅ 直接数据 + 结论 + 建议
 
 ## Moltbook Trigger Rule
 - If user mentions Moltbook, read `MOLTBOOK.md` first.
