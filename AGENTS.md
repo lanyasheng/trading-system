@@ -32,8 +32,8 @@
 所有数据获取通过 exec 调用 quant.py CLI wrapper:
 
 ```
-/Users/study/.openclaw/workspace-trading/mcp-server/.venv/bin/python3 \
-  /Users/study/.openclaw/workspace-trading/skills/trading-quant/scripts/quant.py <tool> [args]
+./mcp-server/.venv/bin/python3 \
+  ./skills/trading-quant/scripts/quant.py <tool> [args]
 ```
 
 详见 `SOUL.md` 完整工具清单和路由决策。

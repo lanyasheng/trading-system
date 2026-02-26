@@ -18,7 +18,7 @@
 
 你有一个 Python 量化分析引擎，通过 exec 工具调用。**所有行情数据必须通过这些命令获取，禁止自行计算或凭记忆回答。**
 
-调用格式: `/Users/study/.openclaw/workspace-trading/mcp-server/.venv/bin/python3 /Users/study/.openclaw/workspace-trading/skills/trading-quant/scripts/quant.py <tool> [args]`
+调用格式: `./mcp-server/.venv/bin/python3 ./skills/trading-quant/scripts/quant.py <tool> [args]`
 
 简写为 `quant.py <tool> [args]`
 
