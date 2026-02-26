@@ -2,6 +2,8 @@
 
 > An AI-powered multi-market trading monitor and analysis system built on OpenClaw. Covers A-shares, US stocks, Hong Kong stocks, precious metals, crude oil, and industrial metals.
 
+**English** | [中文](README.zh-CN.md)
+
 ## Features
 
 - **Multi-market coverage**: A-shares, US stocks (NASDAQ/NYSE), HK stocks, precious metals, crude oil, industrial metals, black commodities, agricultural products
