@@ -1,42 +1,34 @@
-# HEARTBEAT.md - 交易蜘蛛心跳任务
+# HEARTBEAT.md - 交易蜘蛛定时任务参考
 
-> 心跳任务现已通过 cron jobs 配置 (~/.openclaw/cron/jobs.json)，本文件仅作参考。
+> 定时任务通过 cron jobs 配置 (`~/.openclaw/cron/jobs.json`)，本文件仅作参考文档。
 
-## 交易时段检查（工作日 9:30-15:00）
+## 交易日时间表
 
-通过 cron 任务 `a-stock-watchlist-monitor`（每10分钟）自动执行:
+### A 股交易时段 (09:25 - 15:05)
 
-```
-quant.py stock_analysis → 检查异动 → 异动股调用 capital_flow → 推送到 #trading
-```
+| 时间 | 任务 | 频率 |
+|------|------|------|
+| 08:50 | K 线缓存预热 (`warm_klines`) | 一次 |
+| 09:24-09:25 | 开盘集合竞价监控 | 一次 |
+| 09:30-14:30 | 自选股监控 + 异动检测 | 每 10 分钟 |
+| 14:50, 14:55 | 尾盘集合竞价监控 | 两次 |
+| 15:05 | 收盘总结（10 步分析 + 缓存快照） | 一次 |
 
-**推送条件**（满足任一则推送）:
-- 自选股涨跌幅 > 3%
-- 评分 > 65 (BUY) 或 < 35 (SELL)
-- 资金流异常
+### 美股交易时段 (21:30 - 05:30)
 
-**不推送时**: 回复 HEARTBEAT_OK
+| 时间 | 任务 | 频率 |
+|------|------|------|
+| 21:30-05:00 | 美股快照 | 每 30 分钟 |
+| 05:30 | 美股收盘总结 | 一次 |
 
-## 全市场异动扫描
+### 周末
 
-通过 cron 任务 `trading-market-scan`（每30分钟）:
+| 时间 | 任务 | 频率 |
+|------|------|------|
+| 周六 10:00 | 周度复盘 | 一次 |
 
-```
-quant.py market_scan → 全A涨跌幅/大额排行
-```
+## 心跳规则
 
-## 非交易时段
-
-- 检查 `knowledge/` 目录是否需要整理
-- 检查 MEMORY.md 是否需要更新
-- 无事则 HEARTBEAT_OK
-
-## 工具调用
-
-所有数据获取统一通过:
-```
-/Users/study/.openclaw/workspace-trading/mcp-server/.venv/bin/python3 \
-  /Users/study/.openclaw/workspace-trading/skills/trading-quant/scripts/quant.py <tool> [args]
-```
-
-详见 `SOUL.md` 完整工具清单。
+- 交易时段内，如果自选股无异动，返回 `HEARTBEAT_OK`
+- 非 A 股交易时段，A 股相关任务不触发
+- 所有数据获取通过 `quant.py <tool>` 统一调用
