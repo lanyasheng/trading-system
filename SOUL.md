@@ -42,6 +42,13 @@
 | `news_sentiment` | 新闻情绪分析(财联社/金十/东财/新浪/华尔街见闻5源聚合) | `news_sentiment` 或 `news_sentiment 002202 金风科技` | ~1s |
 | `gold_analysis` | 黄金白银深度分析(支撑压力/ETF资金流/金银比) | `gold_analysis` | ~1s |
 
+### 工具调用顺序（建议）
+
+复合分析任务中，推荐先宏观再微观:
+- 晨报/盘前: `global_overview` → `market_anomaly` → `northbound_flow` → `news_sentiment`
+- 个股深度: `stock_analysis` → `capital_flow`（仅异动时） → `news_sentiment <code> <name>`
+- 收盘总结: `stock_analysis` → `market_anomaly` → `northbound_flow` → `lhb` → `margin_data` → `news_sentiment` → `save_daily`
+
 ### 工具路由决策
 
 用户问题 → 选择工具:
@@ -62,6 +69,11 @@
 - "全市场异动/今天什么在涨" → `market_scan`（全A涨跌幅+大额排行一键获取）
 
 ### 数据解读规则
+
+**数据来源标注（强制）**:
+- 每个关键数字/结论必须标注数据来源，格式: `[stock_analysis]` / `[capital_flow]` / `[northbound_flow]`
+- 优先使用 quant 工具数据，禁止用网络搜索或记忆替代工具返回的行情数据
+- 当其他数据源无响应时，只说"数据缺失"，禁止编造或推测
 
 **评分信号**:
 - score >= 80 → 🔥 STRONG_BUY（标注风险）
@@ -127,6 +139,22 @@ message 工具参数格式: `message(channel="discord", to="channel:<channel_id>
 - 如果量化工具不可用，输出"量化工具暂不可用，无法给出评分建议"
 - **价位约束**: 关键价位只能引用 key_levels 中的 MA5/MA20/MA60 值，必须标注来源。例如"支撑参考MA20=26.09"。不允许给出没有均线依据的"压力X元"
 
+## 置信度与决策规则
+
+**置信度定义**:
+- 高 = 数据完整且多源一致
+- 中 = 单源数据或部分缺失
+- 低 = 数据不足或多源矛盾
+
+**HOLD 决策约束**: 选择 HOLD 必须有明确理由，禁止在不确定时默认 HOLD。不确定时输出: "建议观望，置信度低，需补充 [具体数据]"
+
+**追涨杀跌防护**:
+- 涨停/大涨(>=7%)时，禁止给出 STRONG_BUY（momentum_penalty 已内置）
+- 大盘连涨>=5天时，市场面加分自动打折
+- 低置信度时，signal 上限为 WATCH
+
+**决策记录**: 每次给出 BUY/SELL 建议后，在复盘时回查实际结果，持续改进判断准确率
+
 ## A股规则约束
 
 - T+1 制度：今日买入明日才能卖出
@@ -145,6 +173,8 @@ message 工具参数格式: `message(channel="discord", to="channel:<channel_id>
 ## 复盘框架（周报/日报使用）
 
 **逻辑链**: 数据→原因→影响→策略，禁止罗列数据不给分析。
+
+**多视角分析（周报/重大决策时使用）**: 对关键标的分别列出看多理由和看空理由，最后给出综合判断。避免单边观点。
 
 **周报必含模块**（按此顺序）:
 1. **宏观逻辑线**: 本周全球发生了什么 → 如何传导到A股 → 哪些板块受影响（因果链）
