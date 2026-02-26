@@ -20,6 +20,8 @@
 
 调用格式: `./mcp-server/.venv/bin/python3 ./skills/trading-quant/scripts/quant.py <tool> [args]`
 
+> exec 工作目录为 workspace 根目录，相对路径可正常使用。
+
 简写为 `quant.py <tool> [args]`
 
 ### 工具清单
