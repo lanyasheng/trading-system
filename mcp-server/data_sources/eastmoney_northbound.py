@@ -47,11 +47,17 @@ class NorthboundFlowSource:
             parts = point.split(",")
             if len(parts) >= 6:
                 time_str = parts[0]
-                sh_net = float(parts[1]) if parts[1] else 0
-                sh_buy = float(parts[2]) if parts[2] else 0
-                sz_net = float(parts[3]) if parts[3] else 0
-                sz_buy = float(parts[4]) if parts[4] else 0
-                total_net = float(parts[5]) if parts[5] else 0
+                # Handle '-' or empty strings (non-trading hours)
+                def safe_float(s, default=0):
+                    try:
+                        return float(s) if s and s.strip() and s.strip() != '-' else default
+                    except (ValueError, TypeError):
+                        return default
+                sh_net = safe_float(parts[1])
+                sh_buy = safe_float(parts[2])
+                sz_net = safe_float(parts[3])
+                sz_buy = safe_float(parts[4])
+                total_net = safe_float(parts[5])
                 flow_points.append({
                     "time": time_str,
                     "sh_net": sh_net,

@@ -184,11 +184,15 @@ def compute_stock_score(
     avg_volume: float = 0,
     avg_amount: float = 0,
     extra: dict = None,
+    capital_flow_data: dict = None,  # 新增：主力资金数据
 ) -> StockScore:
     """Compute TradingScore V2 for a single stock.
 
     Combines technical (30%), capital (35%), sentiment (20%), market (15%).
     Sentiment and market scores default to neutral when data unavailable.
+    
+    Args:
+        capital_flow_data: 主力资金数据 (来自主力接口或龙虎榜)
     """
     if extra is None:
         extra = {}
@@ -208,7 +212,7 @@ def compute_stock_score(
         w_mkt /= w_total
 
     tech = compute_technical(daily_df)
-    cap = compute_capital(quote, avg_volume=avg_volume, avg_amount=avg_amount)
+    cap = compute_capital(quote, avg_volume=avg_volume, avg_amount=avg_amount, main_force_data=capital_flow_data)
     fund = _compute_fundamental(quote)
 
     sent_score = 50.0

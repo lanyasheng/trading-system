@@ -279,3 +279,77 @@ class EastMoneyMarketData:
             if self._sentiment_cache:
                 return self._sentiment_cache
             return {"score": 50.0, "signals": ["大盘数据获取失败(中性)"], "indices": {}}
+
+    async def get_minute_flow(self, code: str, lmt: int = 120) -> dict:
+        """获取个股分钟级资金流数据 (东方财富降级链路).
+        
+        Args:
+            code: 6 位股票代码
+            lmt: 返回 K 线数量 (默认 120 条=2 小时)
+        """
+        code = code.strip().zfill(6)
+        secid = f"1.{code}" if code.startswith(("6", "5")) else f"0.{code}"
+        
+        params = {
+            "secid": secid,
+            "lmt": lmt,
+            "klt": 1,  # 1 分钟 K 线
+            "fields1": "f1,f2,f3,f7",
+            "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
+            "ut": "b2884a393a59ad64002292a3e90d46a5",
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=10, headers=HEADERS) as client:
+                resp = await client.get(self.MAIN_FLOW_URL, params=params)
+                data = resp.json()
+                
+                klines = data.get("data", {}).get("klines", [])
+                if not klines:
+                    return {"code": code, "error": "no minute flow data"}
+                
+                latest = klines[-1].split(",")
+                if len(latest) < 4:
+                    return {"code": code, "error": "incomplete data"}
+                
+                def sf(s):
+                    try: return float(s)
+                    except: return 0.0
+                
+                main_net = sf(latest[1])
+                small_net = sf(latest[2])
+                mid_net = sf(latest[3])
+                big_net = sf(latest[4]) if len(latest) > 4 else 0
+                super_big_net = sf(latest[5]) if len(latest) > 5 else 0
+                
+                total_amount = sum(abs(sf(k.split(",")[1])) for k in klines)
+                
+                last_10 = klines[-10:] if len(klines) >= 10 else klines
+                last_10_flow = [{"time": k.split(",")[0][-4:], "main_net": round(sf(k.split(",")[1]) / 1e4, 2)} for k in last_10]
+                
+                recent_amount = sum(abs(sf(k.split(",")[1])) for k in last_10)
+                avg_amount = total_amount / len(klines) * 10 if klines else 0
+                amount_surge = recent_amount > avg_amount * 1.5 if avg_amount else False
+                
+                return {
+                    "code": code,
+                    "name": data.get("data", {}).get("name", ""),
+                    "last_price": float(data.get("data", {}).get("price", 0)),
+                    "change_pct": round(float(data.get("data", {}).get("chg", 0)), 2),
+                    "total_amount": round(total_amount / 1e8, 2),
+                    "data_points": len(klines),
+                    "amount_surge_last_10min": amount_surge,
+                    "last_10min_flow": last_10_flow[-3:] if last_10_flow else [],
+                    "main_force": {
+                        "main_net_inflow_wan": round(main_net / 1e4, 2),
+                        "super_big_net_wan": round(super_big_net / 1e4, 2),
+                        "big_net_wan": round(big_net / 1e4, 2),
+                        "mid_net_wan": round(mid_net / 1e4, 2),
+                        "small_net_wan": round(small_net / 1e4, 2),
+                        "signal": "主力流入" if main_net > 0 else ("主力流出" if main_net < 0 else "中性"),
+                    },
+                    "source": "em_minute",
+                }
+        except Exception as e:
+            logger.warning(f"EM minute flow failed for {code}: {e}")
+            return {"code": code, "error": str(e)}

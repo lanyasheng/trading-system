@@ -66,6 +66,17 @@ async def main():
         for q in quotes:
             df = dm.get_daily_klines(q.code)
             news_extra = {}
+            # Get main force flow data with fallback
+            main_force_data = None
+            try:
+                from data_sources.capital_flow_manager import CapitalFlowManager
+                flow_mgr = CapitalFlowManager()
+                flow_data = await flow_mgr.get_capital_flow(q.code)
+                if flow_data and "error" not in flow_data:
+                    main_force_data = flow_data.get("main_force")
+                await flow_mgr.close()
+            except Exception as e:
+                logger.warning(f"Capital flow manager failed for {q.code}: {e}")
             try:
                 stock_news = await news_fetcher.get_stock_news(q.code, q.name or "", limit=5)
                 if stock_news:
@@ -80,10 +91,14 @@ async def main():
                 news_extra["consecutive_up_days"] = kline_cons.get("consecutive_up_days", 0)
                 news_extra["consecutive_down_days"] = kline_cons.get("consecutive_down_days", 0)
                 news_extra["nb_consecutive_outflow_days"] = get_nb_consecutive_outflow_days()
-            score = compute_stock_score(q, df, extra=news_extra)
+            score = compute_stock_score(q, df, extra=news_extra, capital_flow_data=main_force_data)
             d = score.to_dict()
             tech = d.get("score", {}).get("technical", {})
             indicators = tech.get("indicators", {})
+            # Add high/low/open from quote data
+            d["open"] = q.open
+            d["high"] = q.high
+            d["low"] = q.low
             if indicators:
                 key_levels = {}
                 for k in ("ma5", "ma10", "ma20", "ma60"):
@@ -207,11 +222,36 @@ async def main():
 
     elif tool == "capital_flow":
         codes = args[0].split(",") if args else []
-        scanner = THSMarketScanner()
+        from data_sources.capital_flow_manager import CapitalFlowManager
+        manager = CapitalFlowManager()
         results = {}
         for code in codes[:5]:
-            results[code] = await scanner.get_capital_flow(code)
+            results[code] = await manager.get_capital_flow(code)
+        await manager.close()
         print(json.dumps(results, ensure_ascii=False))
+    
+    elif tool == "ak_test":
+        """测试 AKShare 数据源."""
+        codes = args[0].split(",") if args else []
+        try:
+            import akshare as ak
+            results = {}
+            for code in codes[:5]:
+                market = 'sz' if code.startswith(('0', '3')) else 'sh'
+                df = ak.stock_individual_fund_flow(stock=code, market=market)
+                if len(df) > 0:
+                    latest = df.iloc[-1]
+                    results[code] = {
+                        "date": latest.get("日期", ""),
+                        "close": latest.get("收盘价", 0),
+                        "change_pct": latest.get("涨跌幅", 0),
+                        "main_net_inflow": latest.get("主力净流入 - 净额", 0),
+                        "super_big_net": latest.get("超大单净流入 - 净额", 0),
+                        "big_net": latest.get("大单净流入 - 净额", 0),
+                    }
+            print(json.dumps({"akshare": results, "count": len(results)}, ensure_ascii=False))
+        except Exception as e:
+            print(json.dumps({"error": str(e)}, ensure_ascii=False))
 
     elif tool == "northbound_flow":
         src = NorthboundFlowSource()
