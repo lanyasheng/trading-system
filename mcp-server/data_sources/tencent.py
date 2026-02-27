@@ -77,6 +77,9 @@ def _parse_tencent_parts(parts: list[str]) -> QuoteData | None:
             market_cap=_safe_float(parts, 44),
             timestamp=parts[30] if len(parts) > 30 and parts[30] else datetime.now().strftime("%Y%m%d%H%M%S"),
             source="tencent",
+            # 主力相关字段
+            outer_vol=_safe_float(parts, 7),  # 外盘 (手)
+            inner_vol=_safe_float(parts, 8),  # 内盘 (手)
         )
     except Exception as e:
         logger.debug("Parse error for tencent data: %s", e)

@@ -151,11 +151,54 @@ def compute_capital(quote: QuoteData, avg_volume: float = 0, avg_amount: float =
         elif super_big < -3000:
             score -= 3
             signals.append(f"超大单流出{super_big/10000:.2f}亿-3[{source}]")
+    # 腾讯内外盘差作为主力替代信号
+    elif hasattr(quote, 'outer_vol') and hasattr(quote, 'inner_vol'):
+        outer_vol = getattr(quote, 'outer_vol', 0) or 0
+        inner_vol = getattr(quote, 'inner_vol', 0) or 0
+        
+        if outer_vol > 0 or inner_vol > 0:
+            outer_inner_diff = outer_vol - inner_vol  # 手
+            metrics["outer_vol"] = int(outer_vol)
+            metrics["inner_vol"] = int(inner_vol)
+            metrics["outer_inner_diff"] = int(outer_inner_diff)
+            metrics["main_force_source"] = "tencent_outer_inner"
+            
+            # 内外盘差评分映射 (考虑量比修正)
+            base_score = 0
+            if outer_inner_diff > 100000:  # >10 万手
+                base_score = 8
+                signals.append(f"外盘强势 +{outer_inner_diff/10000:.1f}万手+8[腾讯]")
+            elif outer_inner_diff > 50000:  # >5 万手
+                base_score = 5
+                signals.append(f"外盘偏强 +{outer_inner_diff/10000:.1f}万手+5[腾讯]")
+            elif outer_inner_diff < -100000:
+                base_score = -8
+                signals.append(f"内盘强势 {outer_inner_diff/10000:.1f}万手 -8[腾讯]")
+            elif outer_inner_diff < -50000:
+                base_score = -5
+                signals.append(f"内盘偏强 {outer_inner_diff/10000:.1f}万手 -5[腾讯]")
+            else:
+                signals.append(f"内外盘平衡 (差{outer_inner_diff/10000:.1f}万手)[腾讯]")
+            
+            # 量比修正 (放量更可信)
+            if quote.volume_ratio > 3:
+                base_score = int(base_score * 1.3)
+                signals.append(f"显著放量，可信度 +30%")
+            elif quote.volume_ratio > 1.5:
+                base_score = int(base_score * 1.1)
+                signals.append(f"温和放量，可信度 +10%")
+            elif quote.volume_ratio < 0.8:
+                base_score = int(base_score * 0.7)
+                signals.append(f"缩量，可信度 -30%")
+            
+            score += base_score
+        else:
+            metrics["main_force_source"] = "missing"
+            signals.append("主力资金数据缺失 (东方财富不稳定，AKShare 未安装)")
     else:
         # 主力数据缺失，标注数据来源状态
         metrics["main_force_source"] = "missing"
         signals.append("主力资金数据缺失 (东方财富不稳定，AKShare 未安装)")
-        metrics["main_force_source"] = "none"
 
     return CapitalSignal(
         score=max(0, min(100, score)),

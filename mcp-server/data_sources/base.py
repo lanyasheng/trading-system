@@ -36,6 +36,9 @@ class QuoteData:
     market_cap: float = 0.0
     timestamp: str = ""
     source: str = ""
+    # 主力相关字段
+    outer_vol: float = 0.0  # 外盘成交量 (手)
+    inner_vol: float = 0.0  # 内盘成交量 (手)
 
 
 @dataclass
