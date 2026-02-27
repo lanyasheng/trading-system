@@ -68,6 +68,72 @@ class CapitalFlowManager:
         
         return {"error": str(last_error), "retries": max_retries}
 
+    async def get_capital_flows_batch(self, codes: list[str]) -> dict[str, dict]:
+        """批量获取资金流数据 (高效版).
+        
+        Args:
+            codes: 股票代码列表
+            
+        Returns:
+            {code: flow_data, ...}
+        """
+        results = {}
+        
+        # 1. 先尝试同花顺批量 (最快)
+        ths_codes = codes[:10]  # 同花顺限制每次最多 10 只
+        for code in ths_codes:
+            try:
+                flow = await self._get_ths().get_capital_flow(code)
+                if "error" not in flow and flow.get("data_points", 0) > 0:
+                    results[code] = flow
+                    results[code]["source"] = "ths"
+            except Exception as e:
+                logger.warning(f"THS flow failed for {code}: {e}")
+        
+        # 2. 对其余股票，仅获取主力资金 (东方财富/AKShare)
+        remaining = [c for c in codes if c not in results]
+        for code in remaining[:5]:  # 限制最多 5 只，防超时
+            try:
+                # 东方财富主力资金 (带重试)
+                async def fetch_em():
+                    em = await self._get_em().get_main_flow(code)
+                    return em if em and "error" not in em else None
+                
+                em_main = await self._retry_request(fetch_em, max_retries=1, base_delay=0.5)
+                if em_main:
+                    results[code] = {"main_force": em_main, "source": "em_main"}
+                    continue
+                
+                # AKShare 历史数据
+                ak = self._get_ak()
+                if ak:
+                    try:
+                        df = ak.stock_individual_fund_flow(stock=code, market='sz' if code.startswith(('0', '3')) else 'sh')
+                        if len(df) > 0:
+                            latest = df.iloc[-1]
+                            results[code] = {
+                                "main_force": {
+                                    "main_net_inflow_wan": round(latest.get("主力净流入 - 净额", 0) / 1e4, 2),
+                                    "super_big_net_wan": round(latest.get("超大单净流入 - 净额", 0) / 1e4, 2),
+                                    "big_net_wan": round(latest.get("大单净流入 - 净额", 0) / 1e4, 2),
+                                    "signal": "主力流入" if latest.get("主力净流入 - 净额", 0) > 0 else "主力流出",
+                                    "source": "akshare_T+1",
+                                    "date": latest.get("日期", ""),
+                                },
+                                "source": "akshare"
+                            }
+                    except Exception as e:
+                        logger.warning(f"AKShare failed for {code}: {e}")
+            except Exception as e:
+                logger.warning(f"Main force failed for {code}: {e}")
+        
+        # 3. 剩余股票标记为缺失
+        for code in codes:
+            if code not in results:
+                results[code] = {"main_force": None, "source": "missing"}
+        
+        return results
+
     async def get_capital_flow(self, code: str) -> dict:
         """获取资金流数据 (带降级).
         

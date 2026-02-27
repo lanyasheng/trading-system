@@ -66,17 +66,28 @@ async def main():
         for q in quotes:
             df = dm.get_daily_klines(q.code)
             news_extra = {}
-            # Get main force flow data with fallback
-            main_force_data = None
-            try:
+            
+            # 批量获取主力资金数据 (优化：只获取异动标的)
+            # 筛选条件：成交额>30 亿 或 量比>2.0
+            abnormal_codes = []
+            for quote in quotes:
+                if quote.amount > 3e9 or quote.volume_ratio > 2.0:  # 30 亿或量比 2.0
+                    abnormal_codes.append(quote.code)
+            
+            # 批量调用 (仅异动标的)
+            flow_results = {}
+            if abnormal_codes:
                 from data_sources.capital_flow_manager import CapitalFlowManager
                 flow_mgr = CapitalFlowManager()
-                flow_data = await flow_mgr.get_capital_flow(q.code)
-                if flow_data and "error" not in flow_data:
-                    main_force_data = flow_data.get("main_force")
+                flow_results = await flow_mgr.get_capital_flows_batch(abnormal_codes)
                 await flow_mgr.close()
-            except Exception as e:
-                logger.warning(f"Capital flow manager failed for {q.code}: {e}")
+            
+            # 获取当前股票资金流数据 (从批量结果中取)
+            main_force_data = None
+            if q.code in flow_results:
+                flow_data = flow_results[q.code]
+                main_force_data = flow_data.get("main_force")
+            
             try:
                 stock_news = await news_fetcher.get_stock_news(q.code, q.name or "", limit=5)
                 if stock_news:
